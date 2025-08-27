@@ -219,6 +219,10 @@ def plot_solver_steps(sol, im_batch, mask_batch, class_batch, class_map, outdir,
     
     
 
+# # Em utils/utils_fm.py
+
+# # ... (suas importações e outras funções)
+
 # def calculate_metrics(
 #     model: torch.nn.Module,
 #     val_loader: torch.utils.data.DataLoader,
@@ -226,86 +230,64 @@ def plot_solver_steps(sol, im_batch, mask_batch, class_batch, class_map, outdir,
 #     solver_config: dict,
 #     white_pixel_weight: float,
 #     gray_pixel_weight: float,
+#     black_pixel_weight: float, # Adicionado para consistência
 #     mask_conditioning: bool = True,
 #     class_conditioning: bool = False,
 # ):
-#     """Calcula a loss de validação e métricas SSIM, lidando com a saída de múltiplas amostras."""
-#     data_range = 2.0
+#     """
+#     Versão final: Calcula a loss de validação e a métrica SSIM Global de forma correta e eficiente.
+#     """
+#     # CORREÇÃO: data_range ajustado para 1.0 para corresponder à normalização [0, 1]
+#     data_range = 1.0
 #     ssim_global = torchmetrics.StructuralSimilarityIndexMeasure(data_range=data_range).to(device)
-#     ssim_roi = torchmetrics.StructuralSimilarityIndexMeasure(data_range=data_range).to(device)
-#     ssim_contexto = torchmetrics.StructuralSimilarityIndexMeasure(data_range=data_range).to(device)
-#     all_metrics = [ssim_global, ssim_roi, ssim_contexto]
-
+    
 #     path = AffineProbPath(scheduler=CondOTScheduler())
 #     model.eval()
 #     total_val_loss = 0.0
 
 #     try:
 #         with torch.no_grad():
-#             for batch in tqdm(val_loader, desc="Calculating Metrics (1-to-1)...", leave=False):
+#             for batch in tqdm(val_loader, desc="Calculating Metrics (Loss & SSIM Global)...", leave=False):
 #                 real_images = batch["images"].to(device)
 #                 masks = batch["masks"].to(device) if mask_conditioning else None
-#                 classes = batch["classes"].to(device).unsqueeze(1) if class_conditioning else None
+#                 classes = batch["classes"].to(device).unsqueeze(1) if class_conditioning and "classes" in batch else None
                 
-#                 # --- A. CÁLCULO DA LOSS DE VALIDAÇÃO (sem alteração) ---
+#                 # --- A. CÁLCULO DA LOSS DE VALIDAÇÃO ---
 #                 t = torch.rand(real_images.shape[0], device=device)
 #                 x_0_noise = torch.randn_like(real_images)
 #                 sample_info = path.sample(t=t, x_0=x_0_noise, x_1=real_images)
 #                 v_pred = model(x=sample_info.x_t, t=sample_info.t, masks=masks, cond=classes)
 #                 target_velocity = sample_info.dx_t
                 
-#                 WHITE_PIXEL_VALUE = 1.0; GRAY_PIXEL_VALUE = 0.5
-#                 weight_map = torch.ones_like(target_velocity, device=device)
-#                 if gray_pixel_weight > 1.0:
-#                     weight_map[masks == GRAY_PIXEL_VALUE] = gray_pixel_weight
-#                 weight_map[masks == WHITE_PIXEL_VALUE] = white_pixel_weight
+#                 weight_map = torch.full_like(target_velocity, black_pixel_weight, device=device)
+#                 if gray_pixel_weight > 0: weight_map[masks == 0.5] = gray_pixel_weight
+#                 if white_pixel_weight > 0: weight_map[masks == 1.0] = white_pixel_weight
                 
 #                 loss = torch.mean(torch.abs(v_pred - target_velocity) * weight_map)
 #                 total_val_loss += loss.item()
                 
-#                 # --- B. CÁLCULO DAS MÉTRICAS SSIM ---
+#                 # --- B. CÁLCULO DA MÉTRICA SSIM GLOBAL ---
 #                 x_init = torch.randn_like(real_images)
 #                 solution_steps = sample_with_solver(
 #                     model=model, x_init=x_init, solver_config=solver_config, cond=classes, masks=masks
 #                 )
 #                 generated_images = solution_steps[:, -1] if solution_steps.dim() == 5 else solution_steps
 
-#                 generated_images = generated_images[:1,:,:,:]
-#                 real_images = real_images[:1,:,:,:]
-#                 masks = masks[:1,:,:,:] if masks is not None else None
-#                 # =======================================================
-#                 #                INÍCIO DA CORREÇÃO DEFINITIVA
-#                 # =======================================================
-#                 # if generated_images_all.shape[0] > real_images.shape[0]:
-#                 #     num_generated_per_real = generated_images_all.shape[0] // real_images.shape[0]
-#                 #     indices = torch.arange(0, generated_images_all.shape[0], step=num_generated_per_real, device=device)
-#                 #     generated_images = generated_images_all[indices]
-#                 # else:
-#                 #     generated_images = generated_images_all
-#                 # Agora, `generated_images` tem o mesmo batch size que `real_images`, garantido.
-#                 # =======================================================
-#                 #                 FIM DA CORREÇÃO
-#                 # =======================================================
-
-#                 # generated_images_norm = normalize_tensor_to_zero_one(generated_images)
-#                 ssim_global.update(generated_images, real_images)
-#                 mask_roi = (masks == WHITE_PIXEL_VALUE).float()
-#                 mask_contexto = (masks == GRAY_PIXEL_VALUE).float()
-#                 ssim_roi.update(generated_images * mask_roi, real_images * mask_roi)
-#                 ssim_contexto.update(generated_images * mask_contexto, real_images * mask_contexto)
+#                 # CORREÇÃO: A normalização foi reativada
+#                 generated_images_norm = normalize_tensor_to_zero_one(generated_images)
+                
+#                 # CORREÇÃO: As linhas de fatiamento `[:1,:,:,:]` foram removidas
+#                 ssim_global.update(generated_images_norm, real_images)
 
 #         avg_val_loss = total_val_loss / len(val_loader)
 #         metrics_results = {
 #             "val_loss": avg_val_loss,
 #             "SSIM_global": ssim_global.compute().item(),
-#             "SSIM_roi": ssim_roi.compute().item(),
-#             "SSIM_contexto": ssim_contexto.compute().item(),
 #         }
 #         return metrics_results
+        
 #     finally:
-#         for metric in all_metrics:
-#             metric.reset()
-            
+#         ssim_global.reset()
             
 
 def validate_and_save_samples(
