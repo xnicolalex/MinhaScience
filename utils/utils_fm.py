@@ -575,3 +575,5 @@ def sample_batch(
     final_imgs = sol[-1] if sol.dim() == 5 else sol
     return final_imgs
 
+
+print("Não é a mesma coisa lalala")

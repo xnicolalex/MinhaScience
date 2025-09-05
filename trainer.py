@@ -323,6 +323,11 @@ def main():
     log_file.close()
     writer.close()
     print("Training complete!")
+    
+    
+    
+    
+print("NAO É A MESMA COISA LALALLALA")
         
 if __name__ == "__main__":
     main()
